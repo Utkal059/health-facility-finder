@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node / frontend build
+node_modules/
+frontend/dist/
+
+# Secrets: only the example file is committed
+.env
+.env.*
+!.env.example
+
+# Scraper output. Raw crawls live in the database; the one curated
+# snapshot under data/snapshot/ is the only data that is committed.
+reports/
+data/*
+!data/snapshot/
+data/snapshot/*
+!data/snapshot/README.md
+!data/snapshot/*.jsonl.gz
+
+# Editors and OS clutter
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local editor/agent settings
+.claude/

@@ -1,0 +1,5 @@
+# Keep LF endings in the repo so shell scripts and SQL behave the same in
+# Docker (Linux) as on a Windows checkout.
+* text=auto eol=lf
+*.gz binary
+*.png binary

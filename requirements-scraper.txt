@@ -1,0 +1,4 @@
+# Adds what the crawl itself needs: a real browser and an HTTP client for robots.txt.
+-r requirements.txt
+playwright==1.49.1
+httpx==0.28.1
