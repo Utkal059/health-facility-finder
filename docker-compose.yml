@@ -1,0 +1,78 @@
+# One-command local setup: `docker compose up --build`
+#
+#   db    Postgres 16
+#   seed  runs the migrations, then loads the committed scrape snapshot
+#         (data/snapshot/) through the same parser the scraper uses
+#   api   FastAPI on http://localhost:8000 (docs at /docs)
+#   web   the built frontend on http://localhost:8080
+#
+# The password below only protects a throwaway container on your machine.
+# Real deployments take DATABASE_URL from the host's secret settings.
+
+name: health-facility-finder
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: hff
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hff}
+      POSTGRES_DB: hff
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/create-test-db.sql:/docker-entrypoint-initdb.d/create-test-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hff -d hff"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  seed:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    command: >
+      sh -c "python -m db.migrate &&
+             python -m scraper snapshot load data/snapshot/nhpr_raw_responses.jsonl.gz --if-exists"
+    environment:
+      DATABASE_URL: postgresql://hff:${POSTGRES_PASSWORD:-hff}@db:5432/hff
+    volumes:
+      - ./data:/app/data:ro
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://hff:${POSTGRES_PASSWORD:-hff}@db:5432/hff
+      ALLOWED_ORIGINS: http://localhost:8080,http://localhost:5173
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-60}
+    ports:
+      - "8000:8000"
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  web:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: http://localhost:8000
+    ports:
+      - "8080:80"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  pgdata:
