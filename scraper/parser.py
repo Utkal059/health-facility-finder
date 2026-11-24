@@ -44,7 +44,7 @@ class PageShapeError(ValueError):
 @dataclass(frozen=True)
 class Place:
     lgd_code: int
-    name: str
+    name: str | None  # only a sub-district may lack one: NHPR sends those as a bare code
 
 
 @dataclass(frozen=True)
@@ -248,6 +248,13 @@ def parse_facility(raw: object) -> ParseResult:
     }
     village_name = clean_name(village.get("locName"))
     village_code = _quiet(parse_lgd_code, village.get("locId"))
+    # NHPR sometimes joins the wrong village: facilities in Ludhiana came back
+    # with villages in Kashmir. A village names its parent sub-district, so one
+    # whose parent isn't the facility's own sub-district is not believed.
+    village_parent = _quiet(parse_lgd_code, village.get("locParntId"))
+    if sub_district and village_parent and village_parent != sub_district.lgd_code:
+        village_name = village_code = None
+        warnings.append("village_not_in_sub_district")
 
     pincode = attempt(normalize_pincode, raw.get("pincode"))
     latitude, longitude = _coordinates(raw, reasons, warnings)
@@ -350,8 +357,11 @@ def _place(raw: Mapping, key: str, code_key: str, name_key: str) -> Place | None
         code_value, name_value = obj.get("locId"), obj.get("locName")
     else:
         code_value, name_value = raw.get(code_key), raw.get(name_key)
-        if name_value is None and isinstance(obj, str):
-            name_value = obj
+        if isinstance(obj, str):
+            if obj.strip().isdecimal():
+                code_value = obj if code_value is None else code_value
+            else:
+                name_value = obj if name_value is None else name_value
 
     name = clean_name(name_value)
     try:
@@ -360,6 +370,8 @@ def _place(raw: Mapping, key: str, code_key: str, name_key: str) -> Place | None
         raise InvalidValue(f"invalid_{what}", code_value) from None
     if code is None and name is None:
         return None
+    if code is not None and name is None and what == "sub_district":
+        return Place(code, None)
     if code is None or name is None:
         raise InvalidValue(f"invalid_{what}", obj if obj is not None else (code_value, name_value))
     return Place(code, name)

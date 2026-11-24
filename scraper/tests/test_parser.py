@@ -194,3 +194,65 @@ def test_real_lgd_district_list():
 def test_named_master_lists_in_any_common_shape(body):
     entries = parse_named_list(body)
     assert [entry.name for entry in entries] == ["Ayurveda"]
+
+
+class TestSubDistrictAndVillage:
+    BASE = {
+        "alternateId": "IN0399000010", "facName": "Sample Clinic", "status": "Approved",
+        "state": {"locId": "3", "locName": "Punjab"},
+        "district": {"locId": "36", "locName": "Ludhiana"},
+    }
+
+    def test_a_bare_code_is_kept_without_a_name(self):
+        result = parse_facility({**self.BASE, "subDistrict": "227"})
+        assert result.record.sub_district == Place(227, None)
+        assert result.warnings == ()
+
+    def test_a_name_without_a_code_is_dropped_with_a_warning(self):
+        result = parse_facility({**self.BASE, "subDistrict": "Sample Tehsil"})
+        assert result.record.sub_district is None
+        assert result.warnings == ("sub_district_dropped",)
+
+    def test_a_village_in_the_same_sub_district_is_kept(self):
+        village = {"locId": "33546", "locName": "Sample Village", "locParntId": "227"}
+        result = parse_facility({**self.BASE, "subDistrict": "227", "vilCityTown": village})
+        assert (result.record.village_name, result.record.village_lgd_code) == ("Sample Village", 33546)
+
+    def test_a_village_from_another_sub_district_is_dropped_with_a_warning(self):
+        village = {"locId": "297", "locName": "Sample Village", "locParntId": "6789"}
+        result = parse_facility({**self.BASE, "subDistrict": "227", "vilCityTown": village})
+        assert (result.record.village_name, result.record.village_lgd_code) == (None, None)
+        assert result.warnings == ("village_not_in_sub_district",)
+
+
+class TestRealSearchPage:
+    """A page NHPR actually sent, with personal details removed."""
+
+    @pytest.fixture(scope="class")
+    def page(self):
+        return parse_search_page(
+            json.loads((FIXTURES / "search_page_real.json").read_text("utf-8"))
+        )
+
+    def test_paging_is_read(self, page):
+        assert len(page.records) == 4
+        assert page.total_results == 1611
+        assert page.page_number == 5
+
+    def test_every_record_parses(self, page):
+        results = [parse_facility(raw) for raw in page.records]
+        assert [r.reasons for r in results] == [()] * 4
+        for result in results:
+            record = result.record
+            assert record.facility_id.startswith("IN03")
+            assert record.state == Place(3, "Punjab")
+            assert record.district == Place(36, "Ludhiana")
+            assert record.sub_district is not None and record.sub_district.name is None
+            assert record.status == "Approved"
+            assert record.latitude is not None and record.longitude is not None
+            assert record.specialities
+            assert record.phone is None  # removed from the fixture
+
+    def test_villages_joined_from_elsewhere_are_not_believed(self, page):
+        warnings = [parse_facility(raw).warnings for raw in page.records]
+        assert sum("village_not_in_sub_district" in w for w in warnings) == 2

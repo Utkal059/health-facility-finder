@@ -111,6 +111,18 @@ class Loader:
             if response.kind == "search_page":
                 self.load_search_page(response)
 
+    def rebuild(self, responses: Iterable[StoredResponse]) -> None:
+        """Throw the parsed facilities away and load them again from scratch.
+
+        Merging keeps a known value when a newer copy lacks it, which is right
+        between two fetches but would also keep whatever an older parser got
+        wrong. One transaction, so readers see the old data until it is done.
+        """
+        with self.conn.transaction():
+            self.conn.execute("DELETE FROM facilities")
+            self.conn.execute("DELETE FROM sub_districts")
+            self.load(responses)
+
     def load_master_list(self, response: StoredResponse) -> None:
         try:
             with self.conn.transaction():
@@ -319,7 +331,8 @@ class Loader:
         if place.lgd_code not in self._sub_district_parent:
             self.conn.execute(
                 "INSERT INTO sub_districts (lgd_code, district_lgd_code, name) VALUES (%s, %s, %s) "
-                "ON CONFLICT (lgd_code) DO NOTHING",
+                "ON CONFLICT (lgd_code) DO UPDATE SET "
+                "name = coalesce(sub_districts.name, EXCLUDED.name)",
                 (place.lgd_code, district_code, place.name),
             )
             row = self.conn.execute(
