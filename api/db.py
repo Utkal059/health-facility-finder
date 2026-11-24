@@ -11,12 +11,17 @@ from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
 
+def _configure_connection(conn: psycopg.Connection) -> None:
+    conn.execute("SET pg_trgm.word_similarity_threshold = 0.35")
+
+
 def create_pool(database_url: str, size: int) -> ConnectionPool:
     return ConnectionPool(
         database_url,
         min_size=1,
         max_size=size,
         kwargs={"row_factory": dict_row, "autocommit": True},
+        configure=_configure_connection,
         open=False,
     )
 
