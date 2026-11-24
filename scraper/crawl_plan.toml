@@ -1,0 +1,30 @@
+# What `python -m scraper crawl` searches for.
+#
+# Names must match NHPR's dropdown labels exactly (they were copied from it).
+# Each district is one NHPR search. The public results list stops at 50
+# facilities per search, so for busy districts you can split a search by
+# ownership, e.g. ownership_filters = ["G", "P"], to see more of them.
+#
+# 5 states x 6 districts = 30 searches, up to 1,500 facilities.
+
+ownership_filters = ["all"]
+
+[[states]]
+name = "Punjab"
+districts = ["Amritsar", "Ludhiana", "Jalandhar", "Patiala", "Bathinda", "S.a.s Nagar"]
+
+[[states]]
+name = "Haryana"
+districts = ["Gurugram", "Faridabad", "Hisar", "Karnal", "Rohtak", "Ambala"]
+
+[[states]]
+name = "Kerala"
+districts = ["Thiruvananthapuram", "Ernakulam", "Kozhikode", "Thrissur", "Kollam", "Malappuram"]
+
+[[states]]
+name = "Karnataka"
+districts = ["Bengaluru Urban", "Mysuru", "Belagavi", "Dakshina Kannada", "Kalaburagi", "Dharwad"]
+
+[[states]]
+name = "Gujarat"
+districts = ["Ahmedabad", "Surat", "Vadodara", "Rajkot", "Bhavnagar", "Jamnagar"]
