@@ -1,0 +1,120 @@
+{
+  "content": [
+    {
+      "alternateId": "IN0399000001",
+      "facName": "Sample Civil Hospital",
+      "status": "Approved",
+      "facOwnership": "G",
+      "facilityType": "Hospital",
+      "systemOfMedicine": "Modern Medicine(Allopathy)",
+      "typeOfService": "In Patient",
+      "address1": "Sample Road",
+      "address2": "Near Bus Stand",
+      "state": { "locId": "3", "locName": "Punjab" },
+      "district": { "locId": "27", "locName": "Amritsar" },
+      "subDistrict": { "locId": "99901", "locName": "Sample Tehsil" },
+      "vilCityTown": { "locId": "800001", "locName": "Sample Town" },
+      "pincode": "143001",
+      "geolocation": "31.634000,74.872300",
+      "abdmSoftware": "1",
+      "mobileNo": "+91-98765 43210",
+      "facWebsite": "www.example.org",
+      "medicalInfraRequestDTO": [
+        {
+          "hasIcuBeds": "Yes",
+          "totalBeds": "120",
+          "icuBedsWithVent": "6",
+          "icuBedsWithoutVent": "4",
+          "ventillators": "8"
+        }
+      ],
+      "specialityDtls": [
+        { "specName": "General Medicine" },
+        { "specName": "Cardiology" }
+      ],
+      "buildImage": null
+    },
+    {
+      "alternateId": " in0399000002 ",
+      "facName": "  SAMPLE   PHC  ,, ",
+      "status": "SUBMITTED",
+      "facOwnership": "Private",
+      "facilityType": "Clinic/ Dispensary",
+      "systemOfMedicine": "Ayurveda, Homoeopathy,Ayurveda",
+      "address1": "12, Sample Lane,Ward 4",
+      "address2": "12, Sample Lane,Ward 4",
+      "state": { "locId": "3", "locName": "Punjab" },
+      "district": { "locId": "27", "locName": "Amritsar" },
+      "pincode": "143 001",
+      "geolocation": "74.8723, 31.6340",
+      "abdmSoftware": "0",
+      "landlineNo": "0183-2345678",
+      "medicalInfraRequestDTO": [{ "hasIcuBeds": "No", "totalBeds": "10" }],
+      "specialityDtls": [
+        { "specName": "ENT" },
+        { "specName": "ent" },
+        { "specName": " Dermatology " }
+      ]
+    },
+    {
+      "alternateId": "IN0399000003",
+      "facName": "Sample Nursing Home",
+      "status": "Approved",
+      "facOwnership": "P",
+      "facilityType": "Hospital",
+      "state": { "locId": "3", "locName": "Punjab" },
+      "district": { "locId": "28", "locName": "Bathinda" },
+      "pincode": "151001",
+      "geolocation": "30.2110,74.9455",
+      "medicalInfraRequestDTO": [
+        { "hasIcuBeds": "Yes", "totalBeds": "5", "noOfLevel2IcuBeds": "4", "noOfLevel3IcuBeds": "3" }
+      ]
+    },
+    {
+      "alternateId": "IN0399000004",
+      "facName": "Sample Diagnostic Lab",
+      "status": "Approved",
+      "facOwnership": "P",
+      "facilityType": "Diagnostic Laboratory",
+      "state": { "locId": "3", "locName": "Punjab" },
+      "district": { "locId": "27", "locName": "Amritsar" },
+      "pincode": "14300",
+      "geolocation": "51.5074,-0.1278"
+    },
+    {
+      "alternateId": "IN03ABC",
+      "facName": "",
+      "status": "Approved",
+      "state": { "locId": "3", "locName": "Punjab" },
+      "district": { "locId": "27", "locName": "Amritsar" }
+    },
+    {
+      "alternateId": "IN0399000006",
+      "facName": "Sample Wellness Centre",
+      "status": "Approved",
+      "facOwnership": "G",
+      "facilityType": "Health & Wellness Centre",
+      "systemOfMedicine": "Modern Medicine(Allopathy)",
+      "state": { "locId": "3", "locName": "Punjab" },
+      "district": { "locId": "28", "locName": "Bathinda" },
+      "pincode": "000000",
+      "geolocation": "0.0,0.0",
+      "mobileNo": "12345",
+      "medicalInfraRequestDTO": []
+    },
+    {
+      "alternateId": "IN0399000007",
+      "facName": "Sample Eye Clinic",
+      "status": "Approved",
+      "facOwnership": "P",
+      "facilityType": "Clinic/ Dispensary",
+      "state": { "locId": "24", "locName": "Gujarat" },
+      "district": { "locId": "438", "locName": "Ahmedabad" },
+      "pincode": "380001",
+      "geolocation": "23.0225,72.5714"
+    }
+  ],
+  "pageable": { "pageNumber": 0, "pageSize": 10 },
+  "totalPages": 1,
+  "totalElements": 7
+}
