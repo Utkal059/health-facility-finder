@@ -31,6 +31,3 @@ data/snapshot/*
 .idea/
 .DS_Store
 Thumbs.db
-
-# Local editor/agent settings
-.claude/
