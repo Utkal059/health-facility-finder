@@ -1,0 +1,20 @@
+# Render blueprint for the API. The database lives on Neon and the frontend on
+# Vercel; see "Deployment" in the README for the whole sequence.
+services:
+  - type: web
+    name: hff-api
+    runtime: docker
+    dockerfilePath: ./api/Dockerfile
+    dockerContext: .
+    plan: free
+    region: singapore
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        sync: false # paste the Neon connection string in the Render dashboard
+      - key: ALLOWED_ORIGINS
+        sync: false # the Vercel URL, e.g. https://health-facility-finder.vercel.app
+      - key: RATE_LIMIT_PER_MINUTE
+        value: "60"
+      - key: TRUST_PROXY_HEADERS
+        value: "true" # Render's proxy puts the caller's address in X-Forwarded-For
