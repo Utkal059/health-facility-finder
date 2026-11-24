@@ -60,6 +60,7 @@ SELECT f.facility_id, f.name, f.status, f.ownership_code, o.name AS ownership,
        f.state_lgd_code, s.name AS state_name,
        f.district_lgd_code, d.name AS district_name,
        f.sub_district_lgd_code, sd.name AS sub_district_name,
+       f.village_city_town_name, f.village_city_town_lgd_code,
        f.address, f.pincode, f.latitude, f.longitude, f.abdm_software,
        fi.has_icu_beds, fi.total_beds, fi.icu_beds,
        (SELECT string_agg(sm.name, ', ' ORDER BY sm.name)
@@ -128,20 +129,20 @@ def _conditions(f: SearchFilters) -> tuple[list[str], dict[str, object]]:
 
     # State, district and sub-district take an LGD code or a name.
     if f.state:
-        if f.state.isdigit():
+        if _is_code(f.state):
             add("f.state_lgd_code = %(state)s", state=int(f.state))
         else:
             add("f.state_lgd_code IN (SELECT lgd_code FROM states WHERE lower(name) = lower(%(state)s))",
                 state=f.state)
     if f.district:
-        if f.district.isdigit():
+        if _is_code(f.district):
             add("f.district_lgd_code = %(district)s", district=int(f.district))
         else:
             add("f.district_lgd_code IN "
                 "(SELECT lgd_code FROM districts WHERE lower(name) = lower(%(district)s))",
                 district=f.district)
     if f.sub_district:
-        if f.sub_district.isdigit():
+        if _is_code(f.sub_district):
             add("f.sub_district_lgd_code = %(sub_district)s", sub_district=int(f.sub_district))
         else:
             add("f.sub_district_lgd_code IN "
@@ -189,6 +190,11 @@ def _conditions(f: SearchFilters) -> tuple[list[str], dict[str, object]]:
         add("lower(f.status) = lower(%(status)s)", status=f.status)
 
     return conditions, params
+
+
+def _is_code(text: str) -> bool:
+    # isdigit() alone also accepts characters int() can't read, like a superscript 2.
+    return text.isascii() and text.isdigit()
 
 
 def _escape_like(text: str) -> str:

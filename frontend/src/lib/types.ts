@@ -18,6 +18,8 @@ export interface FacilitySummary {
   districtLGDCode: string;
   subDistrictName: string | null;
   subDistrictLGDCode: string | null;
+  villageCityTownName: string | null;
+  villageCityTownLGDCode: string | null;
   address: string | null;
   pincode: string | null;
   latitude: string | null;
@@ -35,8 +37,6 @@ export interface SearchResponse {
 }
 
 export interface FacilityDetail extends FacilitySummary {
-  villageCityTownName: string | null;
-  villageCityTownLGDCode: string | null;
   typeOfService: string | null;
   phone: string | null;
   website: string | null;

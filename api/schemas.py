@@ -29,6 +29,8 @@ class FacilitySummary(BaseModel):
     districtLGDCode: str = Field(examples=["27"])
     subDistrictName: str | None
     subDistrictLGDCode: str | None
+    villageCityTownName: str | None
+    villageCityTownLGDCode: str | None
     address: str | None
     pincode: str | None = Field(examples=["143001"])
     latitude: str | None = Field(description="Decimal degrees, as a string like HFR returns it")
@@ -46,8 +48,6 @@ class SearchResponse(BaseModel):
 
 
 class FacilityDetail(FacilitySummary):
-    villageCityTownName: str | None
-    villageCityTownLGDCode: str | None
     typeOfService: str | None
     phone: str | None = Field(examples=["+911832345678"])
     website: str | None

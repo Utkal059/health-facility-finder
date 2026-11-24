@@ -39,6 +39,8 @@ def facility_summary(row: dict[str, Any]) -> dict[str, Any]:
         "districtLGDCode": str(row["district_lgd_code"]),
         "subDistrictName": row["sub_district_name"],
         "subDistrictLGDCode": code(row["sub_district_lgd_code"]),
+        "villageCityTownName": row["village_city_town_name"],
+        "villageCityTownLGDCode": code(row["village_city_town_lgd_code"]),
         "address": row["address"],
         "pincode": row["pincode"],
         "latitude": coordinate(row["latitude"]),
@@ -52,8 +54,6 @@ def facility_summary(row: dict[str, Any]) -> dict[str, Any]:
 def facility_detail(row: dict[str, Any], systems: list[str], specialities: list[str]) -> dict:
     return {
         **facility_summary(row),
-        "villageCityTownName": row["village_city_town_name"],
-        "villageCityTownLGDCode": code(row["village_city_town_lgd_code"]),
         "typeOfService": row["type_of_service"],
         "phone": row["phone"],
         "website": row["website"],

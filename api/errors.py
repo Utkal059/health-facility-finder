@@ -8,6 +8,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+import psycopg
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -63,6 +64,13 @@ def install_error_handlers(app: FastAPI) -> None:
             for err in exc.errors()
         ]
         return error_response(400, "invalid_parameters", "Some parameters are not valid.", details)
+
+    @app.exception_handler(psycopg.DataError)
+    async def _unusable_value(_: Request, exc: psycopg.DataError):
+        # Queries here only carry request parameters, so a value Postgres
+        # can't hold (a NUL character, say) is the caller's mistake.
+        log.info("Rejected parameter value: %s", exc)
+        return error_response(400, "invalid_parameters", "A parameter has a value we can't search for.")
 
     @app.exception_handler(StarletteHTTPException)
     async def _http_error(_: Request, exc: StarletteHTTPException):

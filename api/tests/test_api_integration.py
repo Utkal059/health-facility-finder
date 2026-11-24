@@ -8,10 +8,13 @@ from api.main import create_app
 
 pytestmark = pytest.mark.integration
 
-APPENDIX_B_FIELDS = {
+SEARCH_FIELDS = {
     "facilityId", "facilityName", "facilityStatus", "ownership", "ownershipCode", "facilityType",
     "systemOfMedicine", "stateName", "stateLGDCode", "districtName", "districtLGDCode", "address",
     "pincode", "latitude", "longitude", "hasIcuBeds", "abdmSoftware",
+    # Listed in Appendix A, though the Appendix B example leaves them out.
+    "facilityTypeCode", "systemOfMedicineCode", "subDistrictName", "subDistrictLGDCode",
+    "villageCityTownName", "villageCityTownLGDCode",
 }
 
 
@@ -41,7 +44,7 @@ class TestSearch:
         assert body["totalFacilities"] == 3
         assert body["message"] == "Request processed successfully"
         first = body["facilities"][0]
-        assert set(first) >= APPENDIX_B_FIELDS
+        assert set(first) >= SEARCH_FIELDS
         assert first == client.get("/api/facilities", params={"state": "Punjab"}).json()[
             "facilities"][0]
 
@@ -51,6 +54,16 @@ class TestSearch:
         assert (facility["latitude"], facility["longitude"]) == ("31.634", "74.8723")
         assert (facility["hasIcuBeds"], facility["abdmSoftware"]) == ("Yes", "Yes")
         assert facility["stateLGDCode"] == "3"
+
+    @pytest.mark.parametrize("params", [{"state": "\u00b2"}, {"district": "\u0663"}])
+    def test_odd_digits_are_not_mistaken_for_codes(self, client, params):
+        response = client.get("/api/facilities", params=params)
+        assert response.status_code == 200
+        assert response.json()["totalFacilities"] == 0
+
+    def test_a_value_postgres_cannot_hold_is_a_400(self, client):
+        assert_error(client.get("/api/facilities", params={"name": "ab\x00cd"}),
+                     400, "invalid_parameters")
 
     def test_name_search_tolerates_typos(self, client):
         body = client.get("/api/facilities", params={"name": "civl hospitl"}).json()
