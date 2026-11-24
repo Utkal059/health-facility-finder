@@ -4,16 +4,17 @@ The snapshot holds raw responses, not parsed rows. Loading it runs the same
 parser and loader as a live crawl, so `docker compose up` exercises the real
 ingestion path, and a parser fix can be checked against the full scrape.
 
-Phone numbers and email addresses are removed on export. NHPR shows them
-publicly, but a git repository keeps whatever goes into it forever, often
-they belong to a person rather than the facility, and search doesn't need
-them. A database filled by a live crawl still has the facility phone.
+Personal details are removed on export: phone numbers, email addresses,
+contact people, and the health-ID and login fields that identify whoever
+registered a facility. A git repository keeps whatever goes into it forever,
+and search needs none of it. The local raw table still has the full response.
 """
 
 from __future__ import annotations
 
 import gzip
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -29,24 +30,39 @@ _COLUMNS = (
 )
 
 
-_CONTACT_HINTS = ("email", "mobile", "mobno", "landline", "phone", "contactper")
+# Field names that hold personal details, matched anywhere in the name...
+_PERSONAL_HINTS = (
+    "email", "mobile", "mobno", "landline", "phone", "contactper",
+    "healthid", "usr", "declaredby", "identification",
+)
+# ...or exactly, where a substring would catch innocent fields too.
+_PERSONAL_KEYS = {"facpan", "factan", "facgst", "aboutus", "bookappurl"}
+
+# The same details also turn up inside free text such as addresses.
+_PERSONAL_TEXT = re.compile(
+    r"[\w.+-]+@[\w-]+\.[\w.-]+"  # email address
+    r"|\b\d{2}-\d{4}-\d{4}-\d{4}\b"  # health professional / health ID
+    r"|(?<!\d)(?:\+?91[\s-]?|0)?[6-9]\d{9}(?!\d)"  # mobile number
+)
 
 
-def is_contact_key(key: str) -> bool:
+def is_personal_key(key: str) -> bool:
     lowered = key.lower()
-    return any(hint in lowered for hint in _CONTACT_HINTS)
+    return lowered in _PERSONAL_KEYS or any(hint in lowered for hint in _PERSONAL_HINTS)
 
 
-def redact_contacts(node: Any, replacement: Any = None) -> Any:
-    """A copy of `node` with every phone/email/contact-person value replaced."""
+def redact_personal(node: Any) -> Any:
+    """A copy of `node` without contact details or personal identifiers."""
     if isinstance(node, dict):
         return {
-            key: (replacement if is_contact_key(key) and value not in (None, "")
-                  else redact_contacts(value, replacement))
+            key: (None if is_personal_key(key) and value not in (None, "")
+                  else redact_personal(value))
             for key, value in node.items()
         }
     if isinstance(node, list):
-        return [redact_contacts(item, replacement) for item in node]
+        return [redact_personal(item) for item in node]
+    if isinstance(node, str) and _PERSONAL_TEXT.search(node):
+        return _PERSONAL_TEXT.sub("", node).strip()
     return node
 
 
@@ -60,7 +76,7 @@ def export_snapshot(conn: psycopg.Connection, path: Path) -> int:
         for row in rows:
             record = dict(zip(_COLUMNS, row, strict=True))
             record["fetched_at"] = record["fetched_at"].isoformat()
-            record["body"] = redact_contacts(record["body"])
+            record["body"] = redact_personal(record["body"])
             line = json.dumps(record, ensure_ascii=False, sort_keys=True)
             out.write(line.encode("utf-8") + b"\n")
     return len(rows)

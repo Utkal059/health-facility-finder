@@ -6,8 +6,8 @@ NHPR response (search pages and master lists), exactly as stored in the
 
 - large base64 blobs (facility photos) were cut out at fetch time; their path,
   length and sha256 are kept in `stripped_fields`;
-- phone numbers and email addresses are removed on export (see
-  `scraper/snapshot.py` for why).
+- personal details (phone numbers, emails, contact people, health and login
+  IDs) are removed on export (see `scraper/snapshot.py` for why).
 
 It holds raw responses rather than parsed rows on purpose. Loading it runs the
 same parser, validation, quarantine and dedup as a live crawl:

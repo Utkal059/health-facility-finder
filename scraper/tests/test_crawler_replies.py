@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from scraper.crawler import classify_search_reply
+from scraper.crawler import TaskOutcome, classify_search_reply, missing_pages
 
 RESULTS = json.dumps({"content": [{"facName": "Sample Clinic"}], "totalElements": 1})
 NO_RESULTS = json.dumps({"content": [], "totalElements": 0})
@@ -30,3 +30,16 @@ NO_RESULTS = json.dumps({"content": [], "totalElements": 0})
 )
 def test_classify_search_reply(status, text, verdict):
     assert classify_search_reply(status, text) == verdict
+
+
+@pytest.mark.parametrize(
+    ("seen", "missing"),
+    [([], []), ([0], []), ([0, 1, 2], []), ([2, 0, 1], []), ([0, 1, 2, 4, 5], [3]), ([1], [0])],
+)
+def test_a_skipped_results_page_is_noticed(seen, missing):
+    assert missing_pages(seen) == missing
+
+
+@pytest.mark.parametrize(("total", "target"), [(7, 7), (50, 50), (1086, 50), (None, 50)])
+def test_a_search_aims_for_everything_the_site_shows(total, target):
+    assert TaskOutcome(total_results=total).target == target

@@ -10,7 +10,7 @@ from scraper.cli import _load_and_check, _ShapeDrift
 from scraper.loader import Loader
 from scraper.report import RunReport
 from scraper.snapshot import export_snapshot, import_snapshot
-from scraper.storage import Store
+from scraper.storage import CrawlTask, Store
 
 pytestmark = pytest.mark.integration
 
@@ -131,3 +131,47 @@ def test_snapshot_round_trip_rebuilds_the_same_facilities_without_contacts(seede
         phones = conn.execute("SELECT count(phone) FROM facilities").fetchone()[0]
     assert after == before
     assert phones == 0  # the committed snapshot carries no phone numbers
+
+
+def test_sub_district_sent_as_a_bare_code_is_kept_without_a_name(seeded_db):
+    body = {"content": [{
+        "alternateId": "IN0399000050",
+        "facName": "Sample Clinic",
+        "status": "Approved",
+        "state": {"locId": "3", "locName": "Punjab"},
+        "district": {"locId": "27", "locName": "Amritsar"},
+        "subDistrict": "99902",
+    }]}
+    with psycopg.connect(seeded_db, autocommit=True) as conn:
+        save_and_load(conn, "search_page", "bare|page=0", body)
+        row = conn.execute(
+            """
+            SELECT f.sub_district_lgd_code, sd.name
+            FROM facilities f JOIN sub_districts sd ON sd.lgd_code = f.sub_district_lgd_code
+            WHERE f.facility_id = 'IN0399000050'
+            """
+        ).fetchone()
+    assert row == (99902, None)
+
+
+def test_a_search_that_stopped_early_is_not_counted_as_done(seeded_db):
+    tasks = [CrawlTask("Punjab", name) for name in ("Amritsar", "Ludhiana", "Mansa", "Moga")]
+    with psycopg.connect(seeded_db, autocommit=True) as conn:
+        store = Store(conn)
+        store.register_tasks(tasks)
+        for task, records, total in zip(tasks, (10, 50, 7, 0), (1086, 1611, 7, 0), strict=True):
+            store.update_task(task, status="done", records_seen=records, total_results=total)
+        done = store.done_task_keys()
+    assert done == {"Punjab|Ludhiana|all", "Punjab|Mansa|all", "Punjab|Moga|all"}
+
+
+def test_rebuild_gives_the_same_data_and_clears_what_an_old_parser_left(seeded_db):
+    with psycopg.connect(seeded_db, autocommit=True) as conn:
+        store = Store(conn)
+        kinds = ("states", "districts", "search_page")
+        before = snapshot(conn)
+        conn.execute("UPDATE facilities SET pincode = '999999', website = 'https://stale.example' "
+                     "WHERE facility_id = 'IN0399000006'")
+        assert snapshot(conn) != before
+        Loader(conn, RunReport(command="test")).rebuild(store.responses(kinds))
+        assert snapshot(conn) == before

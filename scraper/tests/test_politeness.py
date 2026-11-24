@@ -94,6 +94,14 @@ class TestPacer:
         pacer.wait()
         assert slept == [2.5]
 
+    def test_a_request_made_outside_wait_restarts_the_gap(self):
+        pacer, now, slept = self.make()
+        pacer.wait()
+        now[0] += 60  # the operator took a minute over the CAPTCHA
+        pacer.mark()  # and their search went out just now
+        pacer.wait()
+        assert slept == [4]
+
     def test_slow_down_sticks(self):
         pacer, _, _ = self.make()
         pacer.slow_down()

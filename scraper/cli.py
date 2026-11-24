@@ -27,9 +27,6 @@ DEFAULT_PLAN = REPO_ROOT / "scraper" / "crawl_plan.toml"
 DEFAULT_SNAPSHOT = REPO_ROOT / "data" / "snapshot" / "nhpr_raw_responses.jsonl.gz"
 REPORTS_DIR = REPO_ROOT / "reports"
 
-# If nearly every record on a page fails for these reasons, NHPR has most
-# likely changed its response format, and carrying on would only fill the
-# quarantine table. Better to stop and look.
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m scraper", description=__doc__,
@@ -53,6 +50,7 @@ def main(argv: list[str] | None = None) -> int:
     fixture = commands.add_parser("fixture", help="save a stored response as a test fixture")
     fixture.add_argument("response_id", type=int)
     fixture.add_argument("path", type=Path)
+    fixture.add_argument("--records", type=int, help="keep only the first N records of a search page")
 
     args = parser.parse_args(argv)
     handler = {
@@ -77,7 +75,7 @@ def run_crawl(args: argparse.Namespace) -> int:
     from playwright.sync_api import Error as PlaywrightError
 
     from scraper.config import load_crawl_settings
-    from scraper.crawler import Blocked, LayoutChanged, NhprBrowser
+    from scraper.crawler import Blocked, LayoutChanged, NhprBrowser, OperatorAway
     from scraper.politeness import HttpResult, check_robots
     from scraper.sources import ROBOTS_URL, SEARCH_PAGE_URL
 
@@ -110,13 +108,17 @@ def run_crawl(args: argparse.Namespace) -> int:
         try:
             with NhprBrowser(settings, store, report, run_id, min_delay) as browser:
                 for task in todo:
-                    outcome = _crawl_with_retries(browser, store, report, task, settings)
-                    if outcome:
-                        _load_and_check(store, loader, report, outcome.response_ids)
+                    _crawl_with_retries(browser, store, report, task, settings)
+                    # Even a search that failed part-way saved some good pages.
+                    if browser.current_response_ids:
+                        _load_and_check(store, loader, report, browser.current_response_ids)
         except Blocked as exc:
             status, report.stopped_because = "blocked", str(exc)
         except LayoutChanged as exc:
             status, report.stopped_because = "failed", f"NHPR's search page changed: {exc}"
+        except OperatorAway as exc:
+            status = "interrupted"
+            report.stopped_because = f"{exc}; run the same command again to continue"
         except (KeyboardInterrupt, PlaywrightError) as exc:
             status = "interrupted"
             report.stopped_because = "stopped by the operator" if isinstance(
@@ -131,7 +133,9 @@ def run_crawl(args: argparse.Namespace) -> int:
     return 0 if status == "finished" else 1
 
 
-def _crawl_with_retries(browser, store: Store, report: RunReport, task: CrawlTask, settings):
+def _crawl_with_retries(
+    browser, store: Store, report: RunReport, task: CrawlTask, settings
+) -> None:
     from scraper.crawler import RetryTask, TaskFailed
 
     last_error = None
@@ -157,12 +161,11 @@ def _crawl_with_retries(browser, store: Store, report: RunReport, task: CrawlTas
         print(f"    {task.label}: {outcome.records} facilities over {outcome.pages} pages"
               + (f" (NHPR has {outcome.total_results}; the site shows 50)"
                  if outcome.hit_display_cap else ""))
-        return outcome
+        return
 
     print(f"    {task.label}: giving up ({last_error})")
     store.update_task(task, status="failed", last_error=last_error)
     report.tasks_failed += 1
-    return None
 
 
 class _ShapeDrift(Exception):
@@ -210,7 +213,7 @@ def run_parse(args: argparse.Namespace) -> int:
     with _connect() as conn:
         store = Store(conn)
         run_id = store.start_run("parse")
-        Loader(conn, report).load(store.responses(ALL_KINDS))
+        Loader(conn, report).rebuild(store.responses(ALL_KINDS))
         _finish(store, run_id, "finished", report)
     return 0
 
@@ -254,14 +257,14 @@ def run_snapshot(args: argparse.Namespace) -> int:
         print(f"Loaded {count} raw responses from {args.path}")
         store = Store(conn)
         run_id = store.start_run("snapshot-load")
-        Loader(conn, report).load(store.responses(ALL_KINDS))
+        Loader(conn, report).rebuild(store.responses(ALL_KINDS))
         _finish(store, run_id, "finished", report)
     return 0
 
 
 def run_fixture(args: argparse.Namespace) -> int:
-    # Contact details have no place in a test fixture either.
-    from scraper.snapshot import redact_contacts
+    # Personal details have no place in a test fixture either.
+    from scraper.snapshot import redact_personal
 
     with _connect() as conn:
         row = conn.execute("SELECT kind, body FROM raw_responses WHERE id = %s",
@@ -270,7 +273,9 @@ def run_fixture(args: argparse.Namespace) -> int:
         raise SystemExit(f"No raw response with id {args.response_id}")
 
     args.path.parent.mkdir(parents=True, exist_ok=True)
-    body = redact_contacts(row[1], "<masked>")
+    body = redact_personal(row[1])
+    if args.records and isinstance(body, dict) and isinstance(body.get("content"), list):
+        body["content"] = body["content"][: args.records]
     args.path.write_text(json.dumps(body, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     print(f"Saved {row[0]} response {args.response_id} to {args.path}")
     return 0

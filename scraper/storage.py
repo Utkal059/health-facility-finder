@@ -12,7 +12,7 @@ from typing import Any
 import psycopg
 from psycopg.types.json import Jsonb
 
-from scraper.sources import OWNERSHIP_LABELS
+from scraper.sources import OWNERSHIP_LABELS, RESULTS_DISPLAY_CAP
 
 # Some NHPR records embed the facility photo as a base64 string. Storing those
 # would make the raw table mostly JPEG, so long base64 strings are cut out and
@@ -152,7 +152,16 @@ class Store:
             )
 
     def done_task_keys(self) -> set[str]:
-        rows = self.conn.execute("SELECT task_key FROM crawl_tasks WHERE status = 'done'")
+        """Searches that have everything the site shows for them.
+
+        A search recorded as done with fewer facilities than that counts as
+        unfinished and runs again.
+        """
+        rows = self.conn.execute(
+            "SELECT task_key FROM crawl_tasks WHERE status = 'done' "
+            "AND records_seen >= least(coalesce(total_results, 0), %s)",
+            (RESULTS_DISPLAY_CAP,),
+        )
         return {row[0] for row in rows.fetchall()}
 
     def begin_task(self, task: CrawlTask) -> None:

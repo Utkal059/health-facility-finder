@@ -54,9 +54,21 @@ class RetryTask(Exception):
     even when a request fails, so the only clean retry is a fresh search."""
 
 
+class OperatorAway(Exception):
+    """Nobody is there to type CAPTCHAs, so there is no point opening the
+    remaining searches one after another. The next run picks up from here."""
+
+
+# How long NHPR gets to draw its "Load More" button after a page arrives.
+LOAD_MORE_TIMEOUT_SECONDS = 20.0
+# How long NHPR gets to answer a "Load More".
+RESPONSE_TIMEOUT_SECONDS = 60.0
+
+
 @dataclass
 class TaskOutcome:
     response_ids: list[int] = field(default_factory=list)
+    page_numbers: list[int] = field(default_factory=list)
     records: int = 0
     total_results: int | None = None
 
@@ -65,8 +77,26 @@ class TaskOutcome:
         return len(self.response_ids)
 
     @property
+    def target(self) -> int:
+        """How many facilities the site will show for this search."""
+        if self.total_results is None:
+            return RESULTS_DISPLAY_CAP
+        return min(self.total_results, RESULTS_DISPLAY_CAP)
+
+    @property
+    def missing_pages(self) -> list[int]:
+        return missing_pages(self.page_numbers)
+
+    @property
     def hit_display_cap(self) -> bool:
         return self.total_results is not None and self.total_results > RESULTS_DISPLAY_CAP
+
+
+def missing_pages(page_numbers: list[int]) -> list[int]:
+    """Page numbers skipped between the first page (0) and the last one seen."""
+    if not page_numbers:
+        return []
+    return sorted(set(range(max(page_numbers) + 1)) - set(page_numbers))
 
 
 def _is_search(response: Response) -> bool:
@@ -76,20 +106,24 @@ def _is_search(response: Response) -> bool:
 class NhprBrowser:
     def __init__(
         self, settings: CrawlSettings, store: Store, report: RunReport, run_id: int,
-        min_delay: float,
+        min_delay: float, headless: bool = False,
     ):
         self.settings = settings
         self.store = store
         self.report = report
         self.run_id = run_id
-        self.pacer = Pacer(min_delay)
+        self.headless = headless
+        # Pausing inside Playwright, not time.sleep, so responses that arrive
+        # during a pause are still noticed.
+        self.pacer = Pacer(min_delay, sleep=lambda seconds: self.page.wait_for_timeout(seconds * 1000))
         self.current_response_ids: list[int] = []
         self._master_responses: list[Response] = []
+        self._search_responses: list[Response] = []
 
     def __enter__(self) -> NhprBrowser:
         self._playwright = sync_playwright().start()
-        # Headed on purpose: a person has to see and type the CAPTCHA.
-        self._browser = self._playwright.chromium.launch(headless=False)
+        # Headed unless a test says otherwise: a person has to see and type the CAPTCHA.
+        self._browser = self._playwright.chromium.launch(headless=self.headless)
         probe = self._browser.new_page()
         user_agent = f"{probe.evaluate('navigator.userAgent')} {self.settings.bot_token}"
         probe.close()
@@ -97,7 +131,7 @@ class NhprBrowser:
             user_agent=user_agent, locale="en-IN", viewport={"width": 1280, "height": 900}
         )
         self.page = self._context.new_page()
-        self.page.on("response", self._remember_master_list)
+        self.page.on("response", self._remember_response)
         return self
 
     def __exit__(self, *exc_info: object) -> None:
@@ -109,6 +143,7 @@ class NhprBrowser:
 
     def crawl(self, task: CrawlTask) -> TaskOutcome:
         self.current_response_ids = []
+        self._search_responses.clear()
         outcome = TaskOutcome()
 
         self.pacer.wait()
@@ -117,30 +152,38 @@ class NhprBrowser:
         self._save_master_lists()
 
         response, body, first = self._wait_for_operator_search(task)
-        self._save_page(task, response, body, first, outcome, page_index=0)
+        self._save_page(task, response, body, first, outcome)
         self._save_master_lists()
 
-        target = RESULTS_DISPLAY_CAP
-        if outcome.total_results is not None:
-            target = min(outcome.total_results, RESULTS_DISPLAY_CAP)
-
-        page_index = 0
-        while outcome.records < target:
+        while outcome.records < outcome.target:
             self.pacer.wait()
-            button = self._load_more_button()
-            if button is None:
-                break  # the site isn't offering more, so neither do we
-            page_index += 1
-            response = self._click_for_results(button)
+            # A "Load more" the operator pressed by hand counts like any other.
+            if not self._search_responses:
+                self._click_for_results(self._load_more_button(outcome))
+            empty = self._save_pending_pages(task, outcome)
+            if empty:
+                raise TaskFailed(f"NHPR sent an empty page after {outcome.records} of "
+                                 f"{outcome.target} facilities")
+
+        if outcome.missing_pages:
+            raise RetryTask(f"page(s) {outcome.missing_pages} of the results never arrived")
+        return outcome
+
+    def _save_pending_pages(self, task: CrawlTask, outcome: TaskOutcome) -> bool:
+        """Store every results page received since last time. True if one was empty."""
+        empty = False
+        pending, self._search_responses = self._search_responses, []
+        for response in pending:
+            if response.status != 200:
+                continue
             body = self._json(response)
             try:
                 page = parse_search_page(body)
             except PageShapeError as exc:
                 raise TaskFailed(f"unexpected 'Load more' response: {exc}") from exc
-            self._save_page(task, response, body, page, outcome, page_index)
-            if not page.records:
-                break
-        return outcome
+            self._save_page(task, response, body, page, outcome)
+            empty = empty or not page.records
+        return empty
 
     def _fill_search_form(self, task: CrawlTask) -> None:
         page = self.page
@@ -184,12 +227,14 @@ class NhprBrowser:
                     timeout=self.settings.captcha_timeout * 1000,
                 )
             except PlaywrightTimeout as exc:
-                raise TaskFailed("nobody entered the CAPTCHA in time") from exc
+                raise OperatorAway(f"nobody entered the CAPTCHA for {task.label}") from exc
 
+            self.pacer.mark()
             text = self._text(response)
             status = response.status
             verdict = classify_search_reply(status, text)
             if verdict == "results":
+                self._search_responses.clear()  # this one, and any rejected attempts before it
                 body = json.loads(text)
                 return response, body, parse_search_page(body)
             if verdict == "captcha":
@@ -205,15 +250,15 @@ class NhprBrowser:
             raise TaskFailed(f"search returned HTTP {status} without a list of facilities: {text[:200]}")
         raise TaskFailed("too many attempts at the CAPTCHA")
 
-    def _click_for_results(self, button: Locator) -> Response:
+    def _click_for_results(self, button: Locator) -> None:
         try:
-            with self.page.expect_response(_is_search, timeout=60_000) as info:
+            with self.page.expect_response(_is_search, timeout=RESPONSE_TIMEOUT_SECONDS * 1000) as info:
                 button.click()
         except PlaywrightTimeout as exc:
-            raise RetryTask("'Load more' got no response within a minute") from exc
+            raise RetryTask("'Load more' got no response in time") from exc
         response = info.value
         if response.status == 200:
-            return response
+            return
         if response.status == 403:
             raise Blocked(f"NHPR answered 'Load more' with HTTP 403: {self._text(response)[:200]}")
         if response.status == 429 or response.status >= 500:
@@ -221,9 +266,24 @@ class NhprBrowser:
             raise RetryTask(f"HTTP {response.status} on 'Load more'")
         raise TaskFailed(f"'Load more' failed with HTTP {response.status}")
 
-    def _load_more_button(self) -> Locator | None:
-        # NHPR labels it "Load More". Prefer a real button; fall back to any
-        # clickable element with that text in case it's rendered as a link or span.
+    def _load_more_button(self, outcome: TaskOutcome) -> Locator:
+        """Wait for "Load More" to be drawn and enabled, then return it.
+
+        The response arrives before the page has rendered it, so looking once
+        and giving up would quietly keep only the first 10 results.
+        """
+        deadline = time.monotonic() + LOAD_MORE_TIMEOUT_SECONDS
+        while time.monotonic() < deadline:
+            button = self._find_load_more()
+            if button is not None:
+                return button
+            self.page.wait_for_timeout(500)
+        raise RetryTask(f"'Load more' never appeared after {outcome.records} of {outcome.target} "
+                        "facilities")
+
+    def _find_load_more(self) -> Locator | None:
+        # Prefer a real button; fall back to any clickable element with that
+        # text in case it's rendered as a link or span.
         label = re.compile(r"load\s*more", re.I)
         for candidates in (self.page.get_by_role("button", name=label), self.page.get_by_text(label)):
             if candidates.count() and candidates.first.is_visible() and candidates.first.is_enabled():
@@ -234,12 +294,16 @@ class NhprBrowser:
 
     def _save_page(
         self, task: CrawlTask, response: Response, body: Any, page: SearchPage,
-        outcome: TaskOutcome, page_index: int,
+        outcome: TaskOutcome,
     ) -> None:
         page_no = page_number_from_url(response.url)
+        if page_no is None:
+            page_no = outcome.pages
+        if page_no in outcome.page_numbers:
+            return  # the same page delivered twice
         response_id = self.store.save_response(
             kind="search_page",
-            source_key=f"{task.key}|page={page_no if page_no is not None else page_index}",
+            source_key=f"{task.key}|page={page_no}",
             url=response.url,
             method=response.request.method,
             request_body=_request_body(response),
@@ -250,16 +314,19 @@ class NhprBrowser:
         )
         self.current_response_ids.append(response_id)
         outcome.response_ids.append(response_id)
+        outcome.page_numbers.append(page_no)
         outcome.records += len(page.records)
         if page.total_results is not None:
             outcome.total_results = page.total_results
         self.report.search_pages_fetched += 1
 
-    def _remember_master_list(self, response: Response) -> None:
+    def _remember_response(self, response: Response) -> None:
         # Runs inside Playwright's event dispatch, so only note it here; the
-        # body is read later in _save_master_lists.
+        # bodies are read later.
         if classify_master(response.url):
             self._master_responses.append(response)
+        elif _is_search(response):
+            self._search_responses.append(response)
 
     def _save_master_lists(self) -> None:
         pending, self._master_responses = self._master_responses, []

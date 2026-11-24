@@ -124,6 +124,10 @@ class Pacer:
         self._last = self._clock()
         return pause
 
+    def mark(self) -> None:
+        """A request was made outside wait() (the operator pressed Search)."""
+        self._last = self._clock()
+
     def slow_down(self, factor: float = 1.5, ceiling: float = 60.0) -> None:
         """After the server pushes back, stay slower for the rest of the run."""
         self.min_delay = min(self.min_delay * factor, ceiling)
