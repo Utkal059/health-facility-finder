@@ -238,7 +238,9 @@ class NhprBrowser:
         for attempt in range(self.settings.max_captcha_attempts):
             self.page.bring_to_front()
             captcha.focus()
-            print(f"\n>>> {task.label}: type the CAPTCHA in the browser window, then press Search.")
+            # \a rings the terminal bell: the window may have opened behind others.
+            print(f"\a\n>>> {task.label}: in the Chromium window (not here), type the CAPTCHA and "
+                  f"press Search. Waiting up to {self.settings.captcha_timeout / 60:.0f} minutes.")
             try:
                 response = self.page.wait_for_event(
                     "response", predicate=_is_search,

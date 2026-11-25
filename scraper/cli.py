@@ -98,9 +98,11 @@ def run_crawl(args: argparse.Namespace) -> int:
         store, loader = Store(conn), Loader(conn, report)
         store.register_tasks(tasks)
         done = set() if args.refresh else store.done_task_keys()
-        todo = [task for task in tasks if task.key not in done][: args.limit]
-        print(f"{len(tasks)} searches planned, {len(tasks) - len(todo)} already done, "
-              f"{len(todo)} to go. Pausing at least {min_delay:.0f}s between requests.")
+        unfinished = [task for task in tasks if task.key not in done]
+        todo = unfinished[: args.limit]
+        print(f"{len(tasks)} searches planned, {len(tasks) - len(unfinished)} already done, "
+              f"{len(unfinished)} to go, {len(todo)} in this run. "
+              f"Pausing at least {min_delay:.0f}s between requests.")
 
         run_id = store.start_run("crawl")
         status = "failed"  # until something below says otherwise
