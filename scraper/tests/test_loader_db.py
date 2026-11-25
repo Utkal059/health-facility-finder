@@ -162,7 +162,9 @@ def test_a_search_that_stopped_early_is_not_counted_as_done(seeded_db):
         for task, records, total in zip(tasks, (10, 50, 7, 0), (1086, 1611, 7, 0), strict=True):
             store.update_task(task, status="done", records_seen=records, total_results=total)
         done = store.done_task_keys()
+        shown = {row[1]: row[3] for row in store.task_overview()}
     assert done == {"Punjab|Ludhiana|all", "Punjab|Mansa|all", "Punjab|Moga|all"}
+    assert shown == {"Amritsar": "unfinished", "Ludhiana": "done", "Mansa": "done", "Moga": "done"}
 
 
 def test_rebuild_gives_the_same_data_and_clears_what_an_old_parser_left(seeded_db):

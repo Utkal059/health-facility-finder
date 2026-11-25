@@ -181,9 +181,12 @@ class Store:
     def task_overview(self) -> list[tuple]:
         return self.conn.execute(
             """
-            SELECT state_name, district_name, coalesce(ownership_filter, 'all'), status,
+            SELECT state_name, district_name, coalesce(ownership_filter, 'all'),
+                   CASE WHEN status = 'done' AND records_seen < least(coalesce(total_results, 0), %s)
+                        THEN 'unfinished' ELSE status END,
                    pages_fetched, records_seen, total_results, hit_display_cap, last_error
             FROM crawl_tasks
             ORDER BY state_name, district_name, ownership_filter NULLS FIRST
-            """
+            """,
+            (RESULTS_DISPLAY_CAP,),
         ).fetchall()
