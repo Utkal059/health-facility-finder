@@ -38,6 +38,9 @@ _PERSONAL_HINTS = (
 # ...or exactly, where a substring would catch innocent fields too.
 _PERSONAL_KEYS = {"facpan", "factan", "facgst", "aboutus", "bookappurl"}
 
+# Coordinates are long runs of digits, some of which would pass for a mobile number.
+_COORDINATE_KEYS = {"geolocation", "latitude", "longitude"}
+
 # The same details also turn up inside free text such as addresses.
 _PERSONAL_TEXT = re.compile(
     r"[\w.+-]+@[\w-]+\.[\w.-]+"  # email address
@@ -56,6 +59,7 @@ def redact_personal(node: Any) -> Any:
     if isinstance(node, dict):
         return {
             key: (None if is_personal_key(key) and value not in (None, "")
+                  else value if key.lower() in _COORDINATE_KEYS
                   else redact_personal(value))
             for key, value in node.items()
         }

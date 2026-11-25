@@ -47,3 +47,9 @@ def test_numbers_that_only_look_a_little_like_phones_survive():
     body = {"alternateId": "IN0310017184", "geolocation": "31.646308,74.878183",
             "pincode": "143001", "crtDt": "2026-10-07T07:22:13.858+00:00"}
     assert redact_personal(body) == body
+
+
+def test_coordinates_with_ten_decimals_are_not_mistaken_for_mobile_numbers():
+    body = {"geolocation": "30.9123456789,75.857276", "latitude": "30.9123456789",
+            "longitude": "75.919876543210"}
+    assert redact_personal(body) == body
