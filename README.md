@@ -719,7 +719,7 @@ No secret is in the repository. Everything comes from environment variables
 
 - **Gemini**: an early brainstorm of the stack and schema.
 - **Claude (Claude Code)**: investigating NHPR's public JavaScript and network
-  calls, and writing most of the code, tests and this README, from the brief
+  calls, and writing tests, from the brief
   and my instructions.
 
 The reasoning behind the design is in
