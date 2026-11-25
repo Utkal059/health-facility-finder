@@ -182,3 +182,8 @@ class TestMastersStatsHealth:
         assert allowed.headers["access-control-allow-origin"] == "http://localhost:5173"
         other = client.get("/health", headers={"Origin": "https://evil.example"})
         assert "access-control-allow-origin" not in other.headers
+
+    def test_an_allowed_origin_may_be_configured_with_a_trailing_slash(self):
+        settings = Settings(database_url="unused",
+                            allowed_origins="https://app.example/ , http://localhost:5173,")
+        assert settings.cors_origins == ["https://app.example", "http://localhost:5173"]

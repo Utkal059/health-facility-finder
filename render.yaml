@@ -13,7 +13,7 @@ services:
       - key: DATABASE_URL
         sync: false # paste the Neon connection string in the Render dashboard
       - key: ALLOWED_ORIGINS
-        sync: false # the Vercel URL, e.g. https://health-facility-finder.vercel.app
+        value: https://health-facility-finder-gamma.vercel.app # the Vercel URL
       - key: RATE_LIMIT_PER_MINUTE
         value: "60"
       - key: TRUST_PROXY_HEADERS

@@ -620,12 +620,12 @@ Postgres on **Neon**, the API on **Render**, the web app on **Vercel**. All free
    DATABASE_URL="postgresql://...neon.tech/neondb?sslmode=require" python -m scraper snapshot load
    ```
 3. **Render:** New → Blueprint → this repository (`render.yaml`). Set
-   `DATABASE_URL` to the Neon string. Set `ALLOWED_ORIGINS` once the Vercel
-   URL exists.
+   `DATABASE_URL` to the Neon string.
 4. **Vercel:** import the repository, set the root directory to `frontend`, and
    set `VITE_API_BASE_URL` to the Render URL.
-5. Put the Vercel URL into `ALLOWED_ORIGINS` on Render, then check
-   `/health`, a search, and a details page.
+5. Put the Vercel URL into `ALLOWED_ORIGINS` in `render.yaml` and push (a
+   service made without the blueprint needs it in the Render dashboard
+   instead), then check `/health`, a search, and a details page.
 
 No secret is in the repository. Everything comes from environment variables
 (`.env.example` lists them), and `.env` is git-ignored.

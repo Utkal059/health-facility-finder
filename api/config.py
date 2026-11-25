@@ -14,7 +14,9 @@ class Settings(BaseSettings):
 
     @property
     def cors_origins(self) -> list[str]:
-        return [origin.strip() for origin in self.allowed_origins.split(",") if origin.strip()]
+        # Browsers send an origin without a trailing slash, so one pasted with it would never match.
+        origins = (origin.strip().rstrip("/") for origin in self.allowed_origins.split(","))
+        return [origin for origin in origins if origin]
 
 
 @lru_cache
