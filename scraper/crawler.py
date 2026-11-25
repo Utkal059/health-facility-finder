@@ -59,6 +59,8 @@ class OperatorAway(Exception):
     remaining searches one after another. The next run picks up from here."""
 
 
+# How long NHPR gets to draw its search form.
+FORM_TIMEOUT_SECONDS = 30.0
 # How long NHPR gets to draw its "Load More" button after a page arrives.
 LOAD_MORE_TIMEOUT_SECONDS = 20.0
 # How long NHPR gets to answer a "Load More".
@@ -119,6 +121,7 @@ class NhprBrowser:
         self.current_response_ids: list[int] = []
         self._master_responses: list[Response] = []
         self._search_responses: list[Response] = []
+        self._attempt = 0  # which try at the current search this is, for backoff
 
     def __enter__(self) -> NhprBrowser:
         self._playwright = sync_playwright().start()
@@ -141,14 +144,14 @@ class NhprBrowser:
 
     # -- one search ---------------------------------------------------------
 
-    def crawl(self, task: CrawlTask) -> TaskOutcome:
+    def crawl(self, task: CrawlTask, attempt: int = 0) -> TaskOutcome:
+        self._attempt = attempt
         self.current_response_ids = []
         self._search_responses.clear()
         outcome = TaskOutcome()
 
-        self.pacer.wait()
-        self.page.goto(SEARCH_PAGE_URL, wait_until="domcontentloaded", timeout=60_000)
-        self._fill_search_form(task)
+        page_response = self._open_search_page()
+        self._fill_search_form(task, page_response)
         self._save_master_lists()
 
         response, body, first = self._wait_for_operator_search(task)
@@ -185,15 +188,30 @@ class NhprBrowser:
             empty = empty or not page.records
         return empty
 
-    def _fill_search_form(self, task: CrawlTask) -> None:
+    def _open_search_page(self) -> Response | None:
+        self.pacer.wait()
+        try:
+            return self.page.goto(SEARCH_PAGE_URL, wait_until="domcontentloaded", timeout=60_000)
+        except PlaywrightError as exc:
+            if self.page.is_closed():
+                raise
+            raise RetryTask(f"the search page didn't load: {first_line(exc)}") from exc
+
+    def _fill_search_form(self, task: CrawlTask, page_response: Response | None) -> None:
         page = self.page
         facility_tab = page.get_by_role("tab", name="Health Facility")
         if facility_tab.count():
             facility_tab.first.click()
         boxes = page.locator("input[role=combobox]")
         try:
-            boxes.first.wait_for(timeout=30_000)
+            boxes.first.wait_for(timeout=FORM_TIMEOUT_SECONDS * 1000)
         except PlaywrightTimeout as exc:
+            status = page_response.status if page_response else 200
+            if status == 403:
+                raise Blocked("NHPR answered the search page with HTTP 403") from exc
+            if status == 429 or status >= 500:
+                self._back_off(page_response, self._attempt)
+                raise RetryTask(f"HTTP {status} on the search page") from exc
             raise LayoutChanged("the search form never appeared") from exc
         if boxes.count() < 2 or page.locator("#captcha").count() == 0:
             raise LayoutChanged("couldn't find the State/District dropdowns and CAPTCHA box")
@@ -262,7 +280,7 @@ class NhprBrowser:
         if response.status == 403:
             raise Blocked(f"NHPR answered 'Load more' with HTTP 403: {self._text(response)[:200]}")
         if response.status == 429 or response.status >= 500:
-            self._back_off(response, attempt=0)
+            self._back_off(response, self._attempt)
             raise RetryTask(f"HTTP {response.status} on 'Load more'")
         raise TaskFailed(f"'Load more' failed with HTTP {response.status}")
 
@@ -397,6 +415,11 @@ def _looks_like_results(text: str) -> bool:
         return True
     except (json.JSONDecodeError, PageShapeError):
         return False
+
+
+def first_line(exc: Exception) -> str:
+    """Playwright's messages go on for pages; the first line says what happened."""
+    return str(exc).partition("\n")[0]
 
 
 def _request_body(response: Response) -> Any:

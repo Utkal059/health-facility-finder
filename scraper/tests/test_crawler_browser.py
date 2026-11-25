@@ -15,7 +15,14 @@ from playwright.sync_api import Error as PlaywrightError
 
 from scraper import crawler
 from scraper.config import CrawlSettings
-from scraper.crawler import NhprBrowser, OperatorAway, RetryTask, TaskFailed
+from scraper.crawler import (
+    Blocked,
+    LayoutChanged,
+    NhprBrowser,
+    OperatorAway,
+    RetryTask,
+    TaskFailed,
+)
 from scraper.report import RunReport
 from scraper.storage import CrawlTask
 
@@ -72,15 +79,24 @@ class RecordingStore:
 @pytest.fixture
 def crawl(monkeypatch):
     """Run one search against the fake page; returns (outcome, page numbers saved)."""
+    monkeypatch.setattr(crawler, "FORM_TIMEOUT_SECONDS", 2.0)
     monkeypatch.setattr(crawler, "LOAD_MORE_TIMEOUT_SECONDS", 4.0)
     monkeypatch.setattr(crawler, "RESPONSE_TIMEOUT_SECONDS", 2.0)
 
-    def run(store: RecordingStore, *, fail_page=None, empty_page=None, captcha_timeout=20.0, **options):
+    def run(store: RecordingStore, *, fail_page=None, empty_page=None, captcha_timeout=20.0,
+            search_page_status=200, offline=False, **options):
         options = {"offersMore": True, "buttonDelay": 300, "operatorPresent": True, **options}
 
         def answer(route):
             request = route.request
             if "searchFacility" not in request.url:
+                if offline:
+                    route.abort()
+                    return
+                if search_page_status != 200:
+                    route.fulfill(status=search_page_status, body="Please make a valid request.",
+                                  headers={"Retry-After": "1"})
+                    return
                 route.fulfill(content_type="text/html",
                               body=PAGE.replace("__OPTIONS__", json.dumps(options)))
                 return
@@ -144,3 +160,24 @@ def test_an_empty_page_before_the_end_is_a_failure(crawl):
 def test_the_crawl_stops_when_nobody_types_the_captcha(crawl):
     with pytest.raises(OperatorAway, match="Amritsar, Punjab"):
         crawl(RecordingStore(), operatorPresent=False, captcha_timeout=1.0)
+
+
+@pytest.mark.parametrize("status", [429, 503])
+def test_a_busy_search_page_backs_off_and_is_retried(crawl, status):
+    with pytest.raises(RetryTask, match=f"HTTP {status} on the search page"):
+        crawl(RecordingStore(), search_page_status=status)
+
+
+def test_a_search_page_that_will_not_load_is_a_retry(crawl):
+    with pytest.raises(RetryTask, match="didn't load"):
+        crawl(RecordingStore(), offline=True)
+
+
+def test_a_refused_search_page_stops_the_crawl(crawl):
+    with pytest.raises(Blocked, match="403"):
+        crawl(RecordingStore(), search_page_status=403)
+
+
+def test_a_search_page_without_the_form_is_a_layout_change(crawl):
+    with pytest.raises(LayoutChanged, match="never appeared"):
+        crawl(RecordingStore(), search_page_status=201)

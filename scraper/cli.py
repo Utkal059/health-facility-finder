@@ -103,7 +103,7 @@ def run_crawl(args: argparse.Namespace) -> int:
               f"{len(todo)} to go. Pausing at least {min_delay:.0f}s between requests.")
 
         run_id = store.start_run("crawl")
-        status = "finished"
+        status = "failed"  # until something below says otherwise
         browser: NhprBrowser | None = None
         try:
             with NhprBrowser(settings, store, report, run_id, min_delay) as browser:
@@ -112,6 +112,7 @@ def run_crawl(args: argparse.Namespace) -> int:
                     # Even a search that failed part-way saved some good pages.
                     if browser.current_response_ids:
                         _load_and_check(store, loader, report, browser.current_response_ids)
+            status = "finished"
         except Blocked as exc:
             status, report.stopped_because = "blocked", str(exc)
         except LayoutChanged as exc:
@@ -125,6 +126,9 @@ def run_crawl(args: argparse.Namespace) -> int:
                 exc, KeyboardInterrupt) else f"browser closed ({exc.__class__.__name__})"
         except _ShapeDrift as exc:
             status, report.stopped_because = "failed", str(exc)
+        except Exception as exc:
+            report.stopped_because = f"unexpected error ({exc.__class__.__name__}: {exc})"
+            raise
         finally:
             # Pages saved by an interrupted search are still worth loading.
             if status != "finished" and browser and browser.current_response_ids:
@@ -136,17 +140,19 @@ def run_crawl(args: argparse.Namespace) -> int:
 def _crawl_with_retries(
     browser, store: Store, report: RunReport, task: CrawlTask, settings
 ) -> None:
-    from scraper.crawler import RetryTask, TaskFailed
+    from playwright.sync_api import TimeoutError as PlaywrightTimeout
+
+    from scraper.crawler import RetryTask, TaskFailed, first_line
 
     last_error = None
-    for _ in range(settings.max_task_attempts):
+    for attempt in range(settings.max_task_attempts):
         store.begin_task(task)
         try:
-            outcome = browser.crawl(task)
-        except RetryTask as exc:
+            outcome = browser.crawl(task, attempt)
+        except (RetryTask, PlaywrightTimeout) as exc:
             report.retries += 1
-            last_error = str(exc)
-            print(f"    {exc}. Starting this search again.")
+            last_error = first_line(exc)
+            print(f"    {last_error}. Starting this search again.")
             continue
         except TaskFailed as exc:
             last_error = str(exc)
