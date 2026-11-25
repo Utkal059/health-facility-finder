@@ -84,7 +84,13 @@ function Details({ facility }: { facility: FacilityDetail }) {
         <Section title="Location">
           <Row label="Address" value={facility.address} />
           <Row label="Village / town" value={facility.villageCityTownName} />
-          <Row label="Sub-district" value={facility.subDistrictName} />
+          <Row
+            label="Sub-district"
+            value={
+              facility.subDistrictName ??
+              (facility.subDistrictLGDCode && `LGD code ${facility.subDistrictLGDCode}`)
+            }
+          />
           <Row label="District" value={facility.districtName} />
           <Row label="State" value={facility.stateName} />
           <Row label="Pincode" value={facility.pincode} />
