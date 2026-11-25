@@ -102,6 +102,14 @@ class TestMessyButValidRecord:
         assert record.systems_of_medicine == ("Ayurveda", "Homoeopathy")
         assert record.specialities == ("Dermatology", "ENT")
 
+    def test_specialities_nhpr_marks_inactive_are_left_out(self, page):
+        result = parse_facility({**page.records[0], "specialityDtls": [
+            {"specName": "Cardiology  ", "activeYn": "Y"},
+            {"specName": "ENT", "activeYn": "N"},
+            {"specName": "Cardiology", "activeYn": "N"},
+        ]})
+        assert result.record.specialities == ("Cardiology",)
+
     def test_explicit_no_icu(self, results):
         assert results[1].record.infrastructure == Infrastructure(has_icu_beds=False, total_beds=10)
 

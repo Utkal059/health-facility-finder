@@ -479,7 +479,12 @@ def _name_list(value: object) -> tuple[str, ...]:
 def _specialities(raw: Mapping) -> tuple[str, ...]:
     details = raw.get("specialityDtls")
     if isinstance(details, list):
-        return _name_list([d.get("specName") if isinstance(d, Mapping) else d for d in details])
+        # NHPR keeps withdrawn rows and marks them inactive.
+        return _name_list([
+            d.get("specName") if isinstance(d, Mapping) else d
+            for d in details
+            if not (isinstance(d, Mapping) and str(d.get("activeYn", "Y")).upper() == "N")
+        ])
     return _name_list(raw.get("specialities"))
 
 
