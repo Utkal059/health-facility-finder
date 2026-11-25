@@ -72,6 +72,12 @@ def install_error_handlers(app: FastAPI) -> None:
         log.info("Rejected parameter value: %s", exc)
         return error_response(400, "invalid_parameters", "A parameter has a value we can't search for.")
 
+    @app.exception_handler(psycopg.OperationalError)
+    async def _database_unavailable(_: Request, exc: psycopg.OperationalError):
+        log.warning("Database unavailable: %s", exc)
+        return error_response(503, "database_unavailable",
+                              "The database is not reachable. Please try again in a moment.")
+
     @app.exception_handler(StarletteHTTPException)
     async def _http_error(_: Request, exc: StarletteHTTPException):
         code = _CODES.get(exc.status_code, "error")

@@ -15,6 +15,10 @@ def _configure_connection(conn: psycopg.Connection) -> None:
     conn.execute("SET pg_trgm.word_similarity_threshold = 0.35")
 
 
+# A hosted database can take a few seconds to wake up; past that, say so.
+CONNECT_WAIT_SECONDS = 10.0
+
+
 def create_pool(database_url: str, size: int) -> ConnectionPool:
     return ConnectionPool(
         database_url,
@@ -22,6 +26,10 @@ def create_pool(database_url: str, size: int) -> ConnectionPool:
         max_size=size,
         kwargs={"row_factory": dict_row, "autocommit": True},
         configure=_configure_connection,
+        # Neon drops idle connections when it suspends. Without this check the
+        # pool would hand them out and the next few requests would fail.
+        check=ConnectionPool.check_connection,
+        timeout=CONNECT_WAIT_SECONDS,
         open=False,
     )
 

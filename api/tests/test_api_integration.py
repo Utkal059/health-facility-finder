@@ -1,5 +1,6 @@
 """The API against a real Postgres, seeded through the scraper's own loader."""
 
+import psycopg
 import pytest
 from fastapi.testclient import TestClient
 
@@ -156,6 +157,20 @@ class TestMastersStatsHealth:
 
     def test_health_checks_the_database(self, client):
         assert client.get("/health").json() == {"status": "ok", "database": "ok"}
+
+    def test_connections_the_database_dropped_are_replaced(self, client, seeded_db):
+        assert client.get("/api/facilities", params={"state": "3"}).status_code == 200
+        with psycopg.connect(seeded_db, autocommit=True) as conn:
+            conn.execute("SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                         "WHERE datname = current_database() AND pid <> pg_backend_pid()")
+        assert client.get("/api/facilities", params={"state": "3"}).status_code == 200
+
+    def test_an_unreachable_database_is_a_503(self):
+        app = create_app(Settings(database_url="postgresql://nobody@127.0.0.1:1/none"))
+        app.state.pool.timeout = 0.2
+        with TestClient(app) as offline:
+            for path in ("/health", "/api/facilities?state=3", "/api/facilities/IN0399000001"):
+                assert_error(offline.get(path), 503, "database_unavailable")
 
     def test_openapi_is_served(self, client):
         spec = client.get("/openapi.json").json()
